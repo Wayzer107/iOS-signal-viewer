@@ -1,29 +1,55 @@
-# Xcode
+# Build artifacts and output
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+dist/
+dist-electron/
 build/
-DerivedData/
+out/
+
+# Node.js / pnpm
+node_modules/
+pnpm-lock.yaml
+.pnpm-store/
+.npm/
+
+# Xcode
 *.xcuserstate
 *.xcuserdatad/
 xcuserdata/
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
 .swiftpm/
 
 # Python
 __pycache__/
 *.pyc
-
-# Output artifacts
-*.sqlite
-*.sqlite-journal
-*.sqlite-wal
-*.sqlite-shm
+*.pyo
+*.egg-info/
+.eggs/
 
 # OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 
 # IDE
 .idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
 
 # Claude Code
 .claude/
