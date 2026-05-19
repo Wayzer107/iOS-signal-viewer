@@ -1,0 +1,69 @@
+{
+  "name": "signal-web",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"node src/server/index.js --port 3001\" \"vite\"",
+    "build": "vite build",
+    "start": "node src/server/index.js --port 8080",
+    "electron:dev": "concurrently \"node src/server/index.js --port 3001\" \"vite\" \"wait-on http://localhost:5173 && cross-env VITE_DEV=true electron src/electron/main.js\"",
+    "build:desktop": "vite build && electron-builder"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "postcss": "^8.4.38",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.23.1",
+    "tailwindcss": "^3.4.4",
+    "vite": "^5.3.1",
+    "wait-on": "^7.2.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "electron"
+    ]
+  },
+  "build": {
+    "appId": "com.signalarchive.reader",
+    "productName": "Signal Archive",
+    "files": [
+      "dist/**/*",
+      "src/server/**/*",
+      "src/electron/**/*",
+      "node_modules/**/*"
+    ],
+    "extraMetadata": {
+      "main": "src/electron/main.js"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    },
+    "directories": {
+      "output": "dist-electron"
+    },
+    "npmRebuild": true
+  }
+}
