@@ -27,3 +27,6 @@ __pycache__/
 
 # Claude Code
 .claude/
+
+# Linux dev artifacts
+linux-dev/*.tar.gz
