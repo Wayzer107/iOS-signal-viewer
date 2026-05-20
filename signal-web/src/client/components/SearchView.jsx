@@ -1,9 +1,8 @@
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
 import { useArchive } from '../App.jsx'
 
-// Render FTS5 snippet — «matched» parts highlighted
 function Snippet({ text }) {
   const parts = text.split(/([«»])/)
   let highlight = false
@@ -26,76 +25,134 @@ const SORT_MODES = [
   { key: 'relevance', label: 'Relevance' },
 ]
 
-function sortResults(results, mode) {
-  const copy = [...results]
-  if (mode === 'newest')    return copy.sort((a, b) => b.timestamp - a.timestamp)
-  if (mode === 'oldest')    return copy.sort((a, b) => a.timestamp - b.timestamp)
-  if (mode === 'relevance') return copy.sort((a, b) => a.rank - b.rank) // lower bm25 = better
-  return copy
-}
-
 export default function SearchView() {
   const { conversations, recipients } = useArchive()
   const navigate = useNavigate()
 
-  const [query, setQuery]         = useState('')
-  const [results, setResults]     = useState([])
-  const [searching, setSearching] = useState(false)
-  const [sortMode, setSortMode]   = useState('newest')
+  const [query, setQuery]           = useState('')
+  const [results, setResults]       = useState([])
+  const [searching, setSearching]   = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore]       = useState(false)
+  const [sortMode, setSortMode]     = useState('newest')
   const [filtersOpen, setFiltersOpen] = useState(false)
 
-  // Filters
-  const [filterConvId,   setFilterConvId]   = useState('')
-  const [filterAuthorId, setFilterAuthorId] = useState('')
+  const [filterConvId,    setFilterConvId]    = useState('')
+  const [filterAuthorId,  setFilterAuthorId]  = useState('')
   const [filterStartDate, setFilterStartDate] = useState('')
   const [filterEndDate,   setFilterEndDate]   = useState('')
 
-  const debounceRef = useRef(null)
+  const debounceRef  = useRef(null)
+  const abortRef     = useRef(null)
+  const sentinelRef  = useRef(null)
+  // Stable refs so the IntersectionObserver callback always reads current values
+  const offsetRef    = useRef(0)
+  const hasMoreRef   = useRef(false)
+  const loadingMoreRef = useRef(false)
+  // Current search params — updated on every new search so loadMore can reuse them
+  const searchParamsRef = useRef({ q: '', filters: {}, sort: 'newest' })
 
-  const runSearch = useCallback((q, filters) => {
-    clearTimeout(debounceRef.current)
-    if (!q.trim()) { setResults([]); return }
+  const buildFilters = useCallback(() => ({
+    convId:   filterConvId   || null,
+    authorId: filterAuthorId || null,
+    startMs:  filterStartDate ? new Date(filterStartDate).getTime() : null,
+    endMs:    filterEndDate   ? new Date(filterEndDate).getTime()   : null,
+  }), [filterConvId, filterAuthorId, filterStartDate, filterEndDate])
 
-    debounceRef.current = setTimeout(async () => {
+  const doSearch = useCallback(async (q, filters, sort, offset) => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    const isNew = offset === 0
+    if (isNew) {
       setSearching(true)
-      try {
-        const data = await api.search(q, {
-          convId:   filters.convId   || null,
-          authorId: filters.authorId || null,
-          startMs:  filters.startDate ? new Date(filters.startDate).getTime() : null,
-          endMs:    filters.endDate   ? new Date(filters.endDate).getTime()   : null,
-        })
-        setResults(data)
-        setSortMode('newest') // reset sort on new search
-      } catch (e) {
-        console.error('Search error:', e)
-      } finally {
-        setSearching(false)
+      offsetRef.current = 0
+    } else {
+      loadingMoreRef.current = true
+      setLoadingMore(true)
+    }
+
+    try {
+      const data = await api.search(q, { ...filters, offset, orderBy: sort }, controller.signal)
+      if (isNew) {
+        setResults(data.results)
+      } else {
+        setResults(prev => [...prev, ...data.results])
       }
-    }, 150)
+      offsetRef.current = offset + data.results.length
+      hasMoreRef.current = data.hasMore
+      setHasMore(data.hasMore)
+    } catch (e) {
+      if (e.name !== 'AbortError') console.error('Search error:', e)
+    } finally {
+      if (isNew) setSearching(false)
+      else { loadingMoreRef.current = false; setLoadingMore(false) }
+    }
   }, [])
+
+  const triggerSearch = useCallback((q, filters, sort) => {
+    clearTimeout(debounceRef.current)
+    searchParamsRef.current = { q, filters, sort }
+    if (!q.trim()) {
+      setResults([])
+      hasMoreRef.current = false
+      setHasMore(false)
+      return
+    }
+    debounceRef.current = setTimeout(() => doSearch(q, filters, sort, 0), 150)
+  }, [doSearch])
+
+  // IntersectionObserver — stable, reads via refs so no teardown/recreate on each render
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(entries => {
+      if (!entries[0].isIntersecting) return
+      if (!hasMoreRef.current || loadingMoreRef.current) return
+      const { q, filters, sort } = searchParamsRef.current
+      doSearch(q, filters, sort, offsetRef.current)
+    }, { rootMargin: '300px' })
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [doSearch])
 
   const handleQueryChange = e => {
     const q = e.target.value
     setQuery(q)
-    runSearch(q, { convId: filterConvId, authorId: filterAuthorId, startDate: filterStartDate, endDate: filterEndDate })
+    triggerSearch(q, buildFilters(), sortMode)
+  }
+
+  const handleSortChange = e => {
+    const sort = e.target.value
+    setSortMode(sort)
+    triggerSearch(query, buildFilters(), sort)
   }
 
   const handleFilterChange = (field, value) => {
-    const filters = { convId: filterConvId, authorId: filterAuthorId, startDate: filterStartDate, endDate: filterEndDate, [field]: value }
+    const next = {
+      convId:   field === 'convId'    ? value : filterConvId,
+      authorId: field === 'authorId'  ? value : filterAuthorId,
+      startDate: field === 'startDate' ? value : filterStartDate,
+      endDate:   field === 'endDate'   ? value : filterEndDate,
+    }
     if (field === 'convId')    setFilterConvId(value)
     if (field === 'authorId')  setFilterAuthorId(value)
     if (field === 'startDate') setFilterStartDate(value)
     if (field === 'endDate')   setFilterEndDate(value)
-    runSearch(query, filters)
+
+    const filters = {
+      convId:   next.convId   || null,
+      authorId: next.authorId || null,
+      startMs:  next.startDate ? new Date(next.startDate).getTime() : null,
+      endMs:    next.endDate   ? new Date(next.endDate).getTime()   : null,
+    }
+    triggerSearch(query, filters, sortMode)
   }
 
   const clearFilter = field => handleFilterChange(field, '')
 
-  const sorted = sortResults(results, sortMode)
   const hasFilters = filterConvId || filterAuthorId || filterStartDate || filterEndDate
-
-  // All recipients for the sender picker
   const allRecipients = Object.values(recipients).sort((a, b) => a.display_name.localeCompare(b.display_name))
 
   return (
@@ -116,7 +173,7 @@ export default function SearchView() {
               className="flex-1 bg-transparent text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
             />
             {query && (
-              <button onClick={() => { setQuery(''); setResults([]) }} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => { setQuery(''); setResults([]); hasMoreRef.current = false; setHasMore(false) }} className="text-slate-400 hover:text-slate-600">
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm3.54-10.46a.75.75 0 0 0-1.06-1.06L10 8.94 7.54 6.48a.75.75 0 0 0-1.06 1.06L8.94 10l-2.46 2.46a.75.75 0 0 0 1.06 1.06L10 11.06l2.46 2.46a.75.75 0 0 0 1.06-1.06L11.06 10l2.46-2.46z" clipRule="evenodd" />
                 </svg>
@@ -124,18 +181,16 @@ export default function SearchView() {
             )}
           </div>
 
-          {/* Sort picker — only when there are results */}
           {results.length > 0 && (
             <select
               value={sortMode}
-              onChange={e => setSortMode(e.target.value)}
+              onChange={handleSortChange}
               className="text-sm border border-slate-200 rounded-lg px-2 py-2 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
             >
               {SORT_MODES.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
             </select>
           )}
 
-          {/* Filter toggle */}
           <button
             onClick={() => setFiltersOpen(v => !v)}
             className={`p-2 rounded-lg border transition-colors ${
@@ -148,7 +203,6 @@ export default function SearchView() {
           </button>
         </div>
 
-        {/* Filter panel */}
         {filtersOpen && (
           <div className="grid grid-cols-2 gap-2 pt-1">
             <select
@@ -183,7 +237,6 @@ export default function SearchView() {
           </div>
         )}
 
-        {/* Active filter chips */}
         {hasFilters && (
           <div className="flex flex-wrap gap-1.5">
             {filterConvId && (
@@ -225,18 +278,26 @@ export default function SearchView() {
           </div>
         )}
 
-        {!searching && sorted.length > 0 && (
+        {!searching && results.length > 0 && (
           <>
             <div className="px-5 py-2 text-xs text-slate-400 border-b border-slate-100">
-              {sorted.length.toLocaleString()} result{sorted.length !== 1 ? 's' : ''}
+              {results.length.toLocaleString()} result{results.length !== 1 ? 's' : ''}{hasMore ? '+' : ''}
             </div>
-            {sorted.map(r => (
+            {results.map(r => (
               <SearchResultRow key={r.message_id} result={r} onClick={() =>
                 navigate(`/conversations/${r.conversation_id}`, {
                   state: { anchorMessageId: r.message_id }
                 })
               } />
             ))}
+            {/* Sentinel — IntersectionObserver triggers next page load when visible */}
+            <div ref={sentinelRef} className="h-1" />
+            {loadingMore && (
+              <div className="flex justify-center py-4 text-slate-400 text-sm">Loading more…</div>
+            )}
+            {!hasMore && (
+              <div className="text-center py-4 text-xs text-slate-400">All results shown</div>
+            )}
           </>
         )}
       </div>

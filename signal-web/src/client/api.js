@@ -1,7 +1,7 @@
 const base = '/api'
 
-async function get(path) {
-  const res = await fetch(base + path)
+async function get(path, signal) {
+  const res = await fetch(base + path, signal ? { signal } : undefined)
   if (!res.ok) throw new Error(`API error ${res.status}: ${path}`)
   return res.json()
 }
@@ -18,12 +18,14 @@ export const api = {
     return get(`/conversations/${convId}/messages?${q}`)
   },
 
-  search: (q, filters = {}) => {
+  search: (q, filters = {}, signal) => {
     const params = new URLSearchParams({ q })
     if (filters.convId)   params.set('convId',   filters.convId)
     if (filters.authorId) params.set('authorId', filters.authorId)
     if (filters.startMs)  params.set('startMs',  filters.startMs)
     if (filters.endMs)    params.set('endMs',     filters.endMs)
-    return get(`/search?${params}`)
+    if (filters.offset)   params.set('offset',   filters.offset)
+    if (filters.orderBy)  params.set('orderBy',  filters.orderBy)
+    return get(`/search?${params}`, signal)
   },
 }
