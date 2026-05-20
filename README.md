@@ -1,58 +1,109 @@
 # Signal Archive Reader
 
-A suite of applications for reading and searching Signal chat archives exported via [signal_to_sqlite](https://github.com/simonw/signal_to_sqlite).
+A suite of tools for reading and searching Signal chat archives. Start with the [preprocessor](#database) to convert your Signal export into a `.sqlite` database, then pick whichever viewer suits your setup.
 
 ## Projects
 
-### [iOS App](./ios-app)
-SwiftUI application for macOS/iOS. Browse conversations, search messages (full-text), and view threads with pagination. Supports sorting search results by date or relevance, and immersive reading mode (tap to toggle chrome).
+### [preprocess/](./preprocess) — Export preprocessor
 
-**Technologies:** Swift, SwiftUI, GRDB, SQLite, Vite
+Converts a Signal export (`main.jsonl`) into a `signal_archive.sqlite` file consumed by all viewers.
 
-**To build:** Open `ios-app/SignalArchive.xcodeproj` in Xcode
+```bash
+python3 preprocess/signal_to_sqlite.py /path/to/main.jsonl output.sqlite
+```
 
-### [Web App](./signal-web)
-Full-stack web and desktop application built with Node.js, Express, React, and Electron.
+No third-party dependencies. Python 3.10+.
+
+---
+
+### [ios-app/](./ios-app) — Native iOS / macOS app
+
+SwiftUI application targeting iOS 17+. Full-text search, conversation browsing, thread view with bidirectional paging, and immersive reading mode (tap to toggle chrome).
+
+**Technologies:** Swift, SwiftUI, GRDB.swift, SQLite FTS5
+
+**To build:** `open ios-app/SignalArchive.xcodeproj` in Xcode, sign with your Apple Developer account, and run on device or simulator.
+
+---
+
+### [signal-web/](./signal-web) — Web & Electron desktop app
+
+Node.js + Express backend with a React + Vite frontend. Run as a local web server or build an Electron desktop app. Virtualised message list renders large conversations smoothly.
+
+**Technologies:** Node.js, Express, React, Tailwind CSS, Vite, better-sqlite3, Electron, @tanstack/react-virtual
 
 **Modes:**
-- **Web server** — `pnpm start` on port 8080
-- **Desktop app** — `pnpm electron:dev` (dev) or `pnpm build:desktop` (production)
+- **Web server** — `pnpm build && node src/server/index.js --db /path/to/archive.sqlite`
+- **Development** — `pnpm dev` (Vite on :5173 + API on :3001)
+- **Desktop app** — `pnpm build:desktop` → produces a `.dmg` / `.exe` / `.AppImage`
 
-**Technologies:** Node.js, Express, React, Tailwind CSS, Vite, better-sqlite3, Electron
+---
 
-Both apps read from the same SQLite archive database (`preprocess/out.sqlite`).
+### [signal-wasm/](./signal-wasm) — Browser-only static app
+
+Fully static web app — no server required. Drops a `.sqlite` file, reads it entirely in the browser using [sql.js](https://sql-js.github.io/sql.js/) (SQLite compiled to WebAssembly). The file never leaves your machine.
+
+**Technologies:** React, Vite, sql.js (SQLite WASM), Web Worker, Tailwind CSS
+
+**Run locally:**
+```bash
+cd signal-wasm
+pnpm install
+pnpm dev      # copies sql-wasm.{js,wasm} to public/ then starts Vite on :5173
+```
+
+**Static hosting:** `pnpm build` → deploy `dist/` to Netlify, Cloudflare Pages, etc. Requires `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` headers (the included `public/_headers` sets them automatically for Netlify/Cloudflare).
+
+---
+
+### [signal-tauri/](./signal-tauri) — Tauri native desktop app
+
+Native desktop app built with Tauri v2 and Rust. SQLite queries run directly in Rust — no HTTP layer, no Electron overhead. Uses the system WebView; bundle size is ~5–15 MB vs ~200 MB for Electron.
+
+**Technologies:** Tauri v2, Rust, rusqlite (bundled SQLite + FTS5), React, Vite, Tailwind CSS
+
+**Development:**
+```bash
+cd signal-tauri
+pnpm install
+cargo tauri dev   # first run compiles rusqlite (~2 min); subsequent builds are fast
+```
+
+**Distribution:** `cargo tauri build` → `.dmg`/`.app` (macOS), NSIS installer + `.msi` (Windows), `.deb`/`.rpm`/`.AppImage` (Linux).
+
+---
 
 ## Database
 
-Export your Signal chats using [signal_to_sqlite](https://github.com/simonw/signal_to_sqlite):
+All viewers read from a `.sqlite` file produced by the preprocessor. Export your Signal data first (e.g. using [signalbackup-tools](https://github.com/bepaald/signalbackup-tools) on an Android backup), then run:
 
 ```bash
-signal-export [OPTIONS] /path/to/signal/backup.bin
-signal_to_sqlite [OPTIONS] /path/to/exported.jsonl output.sqlite
+python3 preprocess/signal_to_sqlite.py /path/to/signal-export/main.jsonl output.sqlite
 ```
 
-The resulting `output.sqlite` contains:
-- `messages` table with full-text search index (`messages_fts`)
-- `conversations` table with metadata
-- `recipients` table with contact info
-- `schema_info` table with export metadata
+The resulting file contains:
 
-## Features
+| Table | Contents |
+|---|---|
+| `messages` | All messages with direction, kind, body, quote fields |
+| `messages_fts` | FTS5 full-text index over `messages.body` |
+| `conversations` | Conversation metadata (title, group flag, message count, date range) |
+| `recipients` | Contact info (display name, phone, ACI) |
+| `schema_info` | Export metadata and schema version |
 
-Both applications support:
-- **Full-text search** across all messages (FTS5 with BM25 ranking)
-- **Filtering** by conversation, sender, date range
-- **Sorting** results by:
-  - Newest first (default)
-  - Oldest first  
-  - Relevance (BM25 score)
-- **Pagination** for large conversations (load older/newer messages on demand)
-- **Quote display** and message metadata
+## Feature comparison
 
-The iOS app additionally features:
-- **Immersive reading mode** — tap to toggle navigation UI
-- **Pinned conversations** and conversation filtering
-- **Daily message separators** and visual styling
+| Feature | ios-app | signal-web | signal-wasm | signal-tauri |
+|---|:---:|:---:|:---:|:---:|
+| Full-text search (FTS5 / BM25) | ✓ | ✓ | ✓ | ✓ |
+| Filter by conversation / sender / date | ✓ | ✓ | ✓ | ✓ |
+| Sort by relevance / date | ✓ | ✓ | ✓ | ✓ |
+| Virtual scroll (large threads) | ✓ | ✓ | ✓ | ✓ |
+| Quote display | ✓ | ✓ | ✓ | ✓ |
+| No server required | ✓ | | ✓ | ✓ |
+| No install required | | | ✓ | |
+| Immersive reading mode | ✓ | | | |
+| Pinned conversations | ✓ | | | |
 
 ## License
 

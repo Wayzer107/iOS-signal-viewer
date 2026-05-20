@@ -7,7 +7,7 @@ SwiftUI + GRDB.swift + SQLite/FTS5, targeting iOS 17+.
 
 The repository contains a preprocessor script and this native iOS app:
 
-* **`preprocess/signal_to_sqlite.py`** (in repo root) — converts the Signal
+* **`preprocess/signal_to_sqlite.py`** — converts the Signal
   export `main.jsonl` into a `signal_archive.sqlite` SQLite file with FTS5
   full-text indexing over message bodies.
 * **This iOS app** — opens a `.sqlite` file you import via the Files app and
