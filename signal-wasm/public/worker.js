@@ -116,10 +116,10 @@ const handlers = {
     if (startMs != null)  { conditions.push('m.timestamp >= ?');      args.push(Number(startMs)) }
     if (endMs != null)    { conditions.push('m.timestamp <= ?');      args.push(Number(endMs)) }
 
+    // FTS4 (sql.js) does not support bm25(); relevance falls back to newest
     const orderClause =
-      orderBy === 'relevance' ? 'ORDER BY bm25(messages_fts) ASC' :
-      orderBy === 'oldest'    ? 'ORDER BY m.timestamp ASC, m.id ASC' :
-                                'ORDER BY m.timestamp DESC, m.id DESC'
+      orderBy === 'oldest' ? 'ORDER BY m.timestamp ASC, m.id ASC' :
+                             'ORDER BY m.timestamp DESC, m.id DESC'
 
     const result = rows(db.prepare(`
       SELECT m.id           AS message_id,
@@ -130,8 +130,8 @@ const handlers = {
              m.author_id,
              m.direction,
              m.timestamp,
-             bm25(messages_fts) AS rank,
-             snippet(messages_fts, 0, '«', '»', '…', 14) AS snippet
+             0 AS rank,
+             snippet(messages_fts, '«', '»', '…', 0, 14) AS snippet
       FROM messages_fts
       JOIN messages      m ON m.id = messages_fts.rowid
       JOIN conversations c ON c.id = m.conversation_id

@@ -169,10 +169,10 @@ impl ArchiveDb {
         if start_ms.is_some()  { conditions.push(format!("m.timestamp >= ?{}", next_param)); next_param += 1; }
         if end_ms.is_some()    { conditions.push(format!("m.timestamp <= ?{}", next_param)); next_param += 1; }
 
+        // Schema uses FTS4 (required for WASM/sql.js compatibility); bm25() is FTS5-only
         let order_clause = match order_by {
-            "relevance" => "ORDER BY bm25(messages_fts) ASC",
-            "oldest"    => "ORDER BY m.timestamp ASC, m.id ASC",
-            _           => "ORDER BY m.timestamp DESC, m.id DESC",
+            "oldest" => "ORDER BY m.timestamp ASC, m.id ASC",
+            _        => "ORDER BY m.timestamp DESC, m.id DESC",
         };
 
         let limit_param  = next_param;
@@ -187,8 +187,8 @@ impl ArchiveDb {
                     m.author_id,
                     m.direction,
                     m.timestamp,
-                    bm25(messages_fts) AS rank,
-                    snippet(messages_fts, 0, '«', '»', '…', 14) AS snippet
+                    0 AS rank,
+                    snippet(messages_fts, '«', '»', '…', 0, 14) AS snippet
              FROM messages_fts
              JOIN messages      m ON m.id = messages_fts.rowid
              JOIN conversations c ON c.id = m.conversation_id
