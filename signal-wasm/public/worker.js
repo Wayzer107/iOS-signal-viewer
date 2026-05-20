@@ -111,10 +111,10 @@ const handlers = {
 
     const conditions = ['messages_fts MATCH ?']
     const args = [q]
-    if (convId)   { conditions.push('m.conversation_id = ?'); args.push(convId) }
-    if (authorId) { conditions.push('m.author_id = ?');       args.push(authorId) }
-    if (startMs)  { conditions.push('m.timestamp >= ?');      args.push(startMs) }
-    if (endMs)    { conditions.push('m.timestamp <= ?');      args.push(endMs) }
+    if (convId != null && convId !== '')   { conditions.push('m.conversation_id = ?'); args.push(Number(convId)) }
+    if (authorId != null && authorId !== '') { conditions.push('m.author_id = ?');       args.push(Number(authorId)) }
+    if (startMs != null)  { conditions.push('m.timestamp >= ?');      args.push(Number(startMs)) }
+    if (endMs != null)    { conditions.push('m.timestamp <= ?');      args.push(Number(endMs)) }
 
     const orderClause =
       orderBy === 'relevance' ? 'ORDER BY bm25(messages_fts) ASC' :
