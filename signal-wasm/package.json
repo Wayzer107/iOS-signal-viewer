@@ -4,15 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "setup": "node -e \"const fs=require('fs');['sql-wasm.js','sql-wasm.wasm'].forEach(f=>fs.copyFileSync('node_modules/sql.js/dist/'+f,'public/'+f))\"",
+    "dev": "npm run setup && vite",
+    "build": "npm run setup && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@sqlite.org/sqlite-wasm": "^3.49.0",
+    "@tanstack/react-virtual": "^3.13.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.23.1"
+    "react-router-dom": "^6.23.1",
+    "sql.js": "^1.12.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
