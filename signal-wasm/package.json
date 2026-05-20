@@ -1,0 +1,26 @@
+{
+  "name": "signal-wasm",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "node -e \"const fs=require('fs');['sql-wasm.js','sql-wasm.wasm'].forEach(f=>fs.copyFileSync('node_modules/sql.js/dist/'+f,'public/'+f))\"",
+    "dev": "npm run setup && vite",
+    "build": "npm run setup && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tanstack/react-virtual": "^3.13.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.23.1",
+    "sql.js": "^1.12.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.4",
+    "vite": "^5.3.1"
+  }
+}
