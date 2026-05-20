@@ -1,12 +1,8 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct ImportView: View {
     @EnvironmentObject private var database: DatabaseManager
     @State private var pickerShown = false
-
-    private static let sqliteType: UTType =
-        UTType(filenameExtension: "sqlite") ?? UTType.database
 
     var body: some View {
         NavigationStack {
@@ -47,7 +43,7 @@ struct ImportView: View {
             .navigationBarHidden(true)
             .fileImporter(
                 isPresented: $pickerShown,
-                allowedContentTypes: [Self.sqliteType, .data],
+                allowedContentTypes: [.data],
                 allowsMultipleSelection: false
             ) { result in
                 switch result {

@@ -3,6 +3,9 @@ const Database = require('better-sqlite3')
 class ArchiveDB {
   constructor(dbPath) {
     this.db = new Database(dbPath, { readonly: true })
+    this.db.pragma('cache_size = -65536')    // 64MB page cache
+    this.db.pragma('mmap_size = 536870912')  // 512MB memory-mapped I/O
+    this.db.pragma('temp_store = MEMORY')
   }
 
   getInfo() {
@@ -72,10 +75,9 @@ class ArchiveDB {
     `).all(convId, timestamp, timestamp, id, limit)
   }
 
-  // No LIMIT — return all hits, sorted client-side
-  search(rawQuery, { convId, authorId, startMs, endMs } = {}) {
+  search(rawQuery, { convId, authorId, startMs, endMs, limit = 250, offset = 0, orderBy = 'newest' } = {}) {
     const q = sanitizeFTSQuery(rawQuery.trim())
-    if (!q) return []
+    if (!q) return { results: [], hasMore: false }
 
     const conditions = ['messages_fts MATCH ?']
     const args = [q]
@@ -84,7 +86,13 @@ class ArchiveDB {
     if (startMs)  { conditions.push('m.timestamp >= ?');      args.push(startMs) }
     if (endMs)    { conditions.push('m.timestamp <= ?');      args.push(endMs) }
 
-    return this.db.prepare(`
+    const orderClause =
+      orderBy === 'relevance' ? 'ORDER BY bm25(messages_fts) ASC' :
+      orderBy === 'oldest'    ? 'ORDER BY m.timestamp ASC,  m.id ASC' :
+                                'ORDER BY m.timestamp DESC, m.id DESC'
+
+    // Fetch one extra to detect hasMore without a separate COUNT query
+    const rows = this.db.prepare(`
       SELECT m.id           AS message_id,
              m.conversation_id,
              c.title        AS conversation_title,
@@ -100,7 +108,12 @@ class ArchiveDB {
       JOIN conversations c ON c.id = m.conversation_id
       JOIN recipients    r ON r.id = m.author_id
       WHERE ${conditions.join(' AND ')}
-    `).all(...args)
+      ${orderClause}
+      LIMIT ? OFFSET ?
+    `).all(...args, limit + 1, offset)
+
+    const hasMore = rows.length > limit
+    return { results: hasMore ? rows.slice(0, limit) : rows, hasMore }
   }
 
   getStats(convId) {
