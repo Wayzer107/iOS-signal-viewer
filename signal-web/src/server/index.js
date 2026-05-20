@@ -1,10 +1,12 @@
 const express = require('express')
+const compression = require('compression')
 const path = require('path')
 const fs = require('fs')
 const ArchiveDB = require('./db')
 
 function createApp(db, { isElectron = false, openDbCallback = null } = {}) {
   const app = express()
+  app.use(compression())
   app.use(express.json())
 
   app.get('/api/info', (req, res) => {
@@ -36,13 +38,16 @@ function createApp(db, { isElectron = false, openDbCallback = null } = {}) {
 
   app.get('/api/search', (req, res) => {
     try {
-      const { q, convId, authorId, startMs, endMs } = req.query
-      if (!q) return res.json([])
+      const { q, convId, authorId, startMs, endMs, limit, offset, orderBy } = req.query
+      if (!q) return res.json({ results: [], hasMore: false })
       res.json(db.search(q, {
         convId:   convId   ? parseInt(convId)   : null,
         authorId: authorId ? parseInt(authorId) : null,
         startMs:  startMs  ? parseInt(startMs)  : null,
         endMs:    endMs    ? parseInt(endMs)    : null,
+        limit:    Math.min(parseInt(limit)  || 250, 500),
+        offset:   parseInt(offset) || 0,
+        orderBy:  ['newest', 'oldest', 'relevance'].includes(orderBy) ? orderBy : 'newest',
       }))
     } catch (e) { res.status(500).json({ error: e.message }) }
   })
