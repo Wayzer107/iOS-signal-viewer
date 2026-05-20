@@ -5,7 +5,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUTPUT="$SCRIPT_DIR/SignalArchive-ios-sdk.tar.gz"
 
-DEVELOPER_DIR="$(xcode-select -p)"
+DEVELOPER_DIR="$(xcode-select -p 2>/dev/null)" || {
+    echo "Error: xcode-select failed — is Xcode installed and configured?" >&2
+    exit 1
+}
 SDK_SEARCH="$DEVELOPER_DIR/Platforms/iPhoneOS.platform/Developer/SDKs"
 
 if [[ ! -d "$SDK_SEARCH" ]]; then
@@ -22,6 +25,10 @@ if [[ -z "$SDK_DIR" ]]; then
 fi
 
 SDK_VERSION=$(basename "$SDK_DIR" | sed 's/iPhoneOS\(.*\)\.sdk/\1/')
+if [[ -z "$SDK_VERSION" ]]; then
+    echo "Error: could not parse SDK version from $(basename "$SDK_DIR")" >&2
+    exit 1
+fi
 SDK_MAJOR=$(echo "$SDK_VERSION" | cut -d. -f1)
 if [[ "$SDK_MAJOR" -lt 17 ]]; then
     echo "Error: iOS SDK version $SDK_VERSION is below the required minimum 17.0" >&2
