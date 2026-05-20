@@ -84,11 +84,10 @@ CREATE INDEX idx_messages_ts        ON messages(timestamp);
 """.strip().format(version=SCHEMA_VERSION)
 
 FTS_SQL = """
-CREATE VIRTUAL TABLE messages_fts USING fts5(
+CREATE VIRTUAL TABLE messages_fts USING fts4(
+    content="messages",
     body,
-    content='messages',
-    content_rowid='id',
-    tokenize='unicode61 remove_diacritics 2'
+    tokenize=unicode61
 );
 """.strip()
 

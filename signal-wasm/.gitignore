@@ -1,0 +1,5 @@
+node_modules/
+dist/
+# Copied from node_modules/sql.js/dist/ by `npm run setup` — not source
+public/sql-wasm.js
+public/sql-wasm.wasm

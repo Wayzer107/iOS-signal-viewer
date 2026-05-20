@@ -75,6 +75,7 @@ export default function SearchView() {
 
     try {
       const data = await api.search(q, { ...filters, offset, orderBy: sort }, controller.signal)
+      if (controller.signal.aborted) return
       if (isNew) {
         setResults(data.results)
       } else {
