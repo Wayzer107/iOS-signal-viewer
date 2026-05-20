@@ -11,6 +11,10 @@ XTOOL_CONFIG_DIR="$HOME/.config/xtool"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SDK_TARBALL="$SCRIPT_DIR/SignalArchive-ios-sdk.tar.gz"
 
+for cmd in curl git tar sudo; do
+    command -v "$cmd" &>/dev/null || { echo "Error: required command '$cmd' not found. Install it and re-run." >&2; exit 1; }
+done
+
 # ── Detect distro ────────────────────────────────────────────────────────────
 if [[ ! -f /etc/os-release ]]; then
     echo "Error: Cannot detect Linux distribution (/etc/os-release not found)" >&2
@@ -35,16 +39,22 @@ install_swift_ubuntu() {
     esac
 
     local release="swift-${SWIFT_VERSION}-RELEASE"
-    local tarball="/tmp/${release}-${tag}.tar.gz"
     local url="https://download.swift.org/swift-${SWIFT_VERSION}-release/${tag}/${release}/${release}-${tag}.tar.gz"
 
-    echo "Downloading Swift $SWIFT_VERSION for Ubuntu $ver..."
+    if /opt/swift/usr/bin/swift --version 2>/dev/null | grep -q "${SWIFT_VERSION}"; then
+        echo "Swift $SWIFT_VERSION already installed, skipping."
+        export PATH="/opt/swift/usr/bin:$PATH"
+        return 0
+    fi
+    echo "Downloading Swift $SWIFT_VERSION ..."
+    local tarball="/tmp/${release}.tar.gz"
+    trap 'rm -f "$tarball"' RETURN
     curl -fL "$url" -o "$tarball"
 
     echo "Installing Swift to /opt/swift..."
+    sudo rm -rf /opt/swift
     sudo mkdir -p /opt/swift
     sudo tar -xzf "$tarball" -C /opt/swift --strip-components=1
-    rm "$tarball"
 
     local profile_line='export PATH="/opt/swift/usr/bin:$PATH"'
     grep -qF "$profile_line" "$HOME/.profile" 2>/dev/null || echo "$profile_line" >> "$HOME/.profile"
@@ -54,16 +64,23 @@ install_swift_ubuntu() {
 install_swift_fedora() {
     # Use the Fedora 39 build — closest available for recent Fedora versions
     local release="swift-${SWIFT_VERSION}-RELEASE"
-    local tarball="/tmp/${release}-fedora39.tar.gz"
     local url="https://download.swift.org/swift-${SWIFT_VERSION}-release/fedora39/${release}/${release}-fedora39.tar.gz"
 
-    echo "Downloading Swift $SWIFT_VERSION for Fedora..."
+    if /opt/swift/usr/bin/swift --version 2>/dev/null | grep -q "${SWIFT_VERSION}"; then
+        echo "Swift $SWIFT_VERSION already installed, skipping."
+        export PATH="/opt/swift/usr/bin:$PATH"
+        return 0
+    fi
+    echo "Warning: Using Fedora 39 Swift build on Fedora $VERSION — compatibility not guaranteed on newer versions." >&2
+    echo "Downloading Swift $SWIFT_VERSION ..."
+    local tarball="/tmp/${release}.tar.gz"
+    trap 'rm -f "$tarball"' RETURN
     curl -fL "$url" -o "$tarball"
 
     echo "Installing Swift to /opt/swift..."
+    sudo rm -rf /opt/swift
     sudo mkdir -p /opt/swift
     sudo tar -xzf "$tarball" -C /opt/swift --strip-components=1
-    rm "$tarball"
 
     local profile_line='export PATH="/opt/swift/usr/bin:$PATH"'
     grep -qF "$profile_line" "$HOME/.profile" 2>/dev/null || echo "$profile_line" >> "$HOME/.profile"
@@ -79,18 +96,23 @@ case "$DISTRO" in
         ;;
 esac
 
-echo "Swift version: $(swift --version 2>&1 | head -1)"
+echo "Swift version: $(swift --version 2>/dev/null | head -1 || echo 'unknown — run: source ~/.profile')"
 
 # ── Build xtool ───────────────────────────────────────────────────────────────
 echo ""
 echo "Building xtool from source (this takes a few minutes)..."
-XTOOL_SRC="$(mktemp -d)/xtool"
+XTOOL_TMPDIR="$(mktemp -d)"
+XTOOL_SRC="$XTOOL_TMPDIR/xtool"
+trap 'rm -rf "$XTOOL_TMPDIR"' EXIT
 git clone --depth=1 "$XTOOL_REPO" "$XTOOL_SRC"
 (cd "$XTOOL_SRC" && swift build -c release 2>&1)
+[[ -f "$XTOOL_SRC/.build/release/xtool" ]] || {
+    echo "Error: xtool binary not found after build — check build output above" >&2
+    exit 1
+}
 
 mkdir -p "$XTOOL_BIN"
 cp "$XTOOL_SRC/.build/release/xtool" "$XTOOL_BIN/xtool"
-rm -rf "$(dirname "$XTOOL_SRC")"
 
 local_bin_line='export PATH="$HOME/.local/bin:$PATH"'
 grep -qF "$local_bin_line" "$HOME/.profile" 2>/dev/null || echo "$local_bin_line" >> "$HOME/.profile"
@@ -119,9 +141,7 @@ echo "SDK unpacked: $SDK_DIR"
 
 # ── Write xtool config ────────────────────────────────────────────────────────
 mkdir -p "$XTOOL_CONFIG_DIR"
-cat > "$XTOOL_CONFIG_DIR/config" <<EOF
-sdk = $SDK_DIR
-EOF
+printf 'sdk = %s\n' "$SDK_DIR" > "$XTOOL_CONFIG_DIR/config"
 echo "xtool config written to $XTOOL_CONFIG_DIR/config"
 
 # ── Done ──────────────────────────────────────────────────────────────────────
