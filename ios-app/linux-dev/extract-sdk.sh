@@ -17,7 +17,7 @@ if [[ ! -d "$SDK_SEARCH" ]]; then
     exit 1
 fi
 
-SDK_DIR=$(find "$SDK_SEARCH" -maxdepth 1 -name "iPhoneOS*.sdk" -type d | sort -V | tail -1)
+SDK_DIR=$(find "$SDK_SEARCH" -maxdepth 1 -name "iPhoneOS[0-9]*.sdk" \( -type d -o -type l \) | sort -V | tail -1)
 
 if [[ -z "$SDK_DIR" ]]; then
     echo "Error: No iPhoneOS*.sdk found in $SDK_SEARCH" >&2
@@ -35,14 +35,19 @@ if [[ "$SDK_MAJOR" -lt 17 ]]; then
     exit 1
 fi
 
-SDK_PARENT="$(dirname "$SDK_DIR")"
-SDK_NAME="$(basename "$SDK_DIR")"
+# Resolve symlink so tar archives the actual SDK content, not just the symlink itself
+SDK_REAL="$(cd "$SDK_DIR" && pwd -P)"
+SDK_NAME_VERSIONED="$(basename "$SDK_DIR")"
 
 echo "Packaging iOS $SDK_VERSION SDK..."
-echo "  Source: $SDK_DIR"
+echo "  Source: $SDK_DIR -> $SDK_REAL"
 echo "  Output: $OUTPUT"
 
-tar -czf "$OUTPUT" -C "$SDK_PARENT" "$SDK_NAME"
+# Use a temp dir with a versioned-name symlink, then dereference it with tar -L
+TMPDIR_SDK="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR_SDK"' EXIT
+ln -s "$SDK_REAL" "$TMPDIR_SDK/$SDK_NAME_VERSIONED"
+tar -czLf "$OUTPUT" -C "$TMPDIR_SDK" "$SDK_NAME_VERSIONED"
 
 XCODE_VERSION=$(/usr/bin/xcodebuild -version | head -1)
 SIZE=$(du -sh "$OUTPUT" | cut -f1)
